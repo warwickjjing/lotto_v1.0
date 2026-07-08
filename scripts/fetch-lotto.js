@@ -7,21 +7,36 @@ const fs = require('fs');
 const path = require('path');
 
 const DATA_PATH = path.join(__dirname, '..', 'data', 'lotto-history.json');
+const COMMON_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Accept-Language': 'ko-KR,ko;q=0.9',
+};
 
-async function fetchDraw(drwNo) {
+// 메인 페이지를 먼저 방문해서 세션 쿠키를 받아옴 (쿠키 없이 API를 바로 호출하면
+// 로그인 페이지로 리다이렉트되는 문제가 있어, 실제 브라우저 흐름을 흉내냄)
+async function getSessionCookie() {
+  const res = await fetch('https://www.dhlottery.co.kr/common.do?method=main', {
+    headers: COMMON_HEADERS,
+  });
+  const setCookie = res.headers.get('set-cookie') || '';
+  // 여러 개의 Set-Cookie가 콤마로 합쳐져 오는 경우도 있어 세미콜론 기준 앞부분만 추출
+  const cookiePairs = setCookie.split(/,(?=[^;]+?=)/).map(c => c.split(';')[0].trim());
+  return cookiePairs.filter(Boolean).join('; ');
+}
+
+async function fetchDraw(drwNo, cookie) {
   const url = `https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo=${drwNo}`;
   const res = await fetch(url, {
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      ...COMMON_HEADERS,
       'Accept': 'application/json, text/plain, */*',
       'Referer': 'https://www.dhlottery.co.kr/gameResult.do?method=byWin',
-      'Accept-Language': 'ko-KR,ko;q=0.9',
+      'Cookie': cookie,
     }
   });
 
   const text = await res.text();
 
-  // JSON이 아닌 응답(HTML 차단 페이지 등)이 오면, 원인 파악을 위해 앞부분을 그대로 로그로 남김
   let data;
   try {
     data = JSON.parse(text);
@@ -46,6 +61,9 @@ async function main() {
     history = JSON.parse(fs.readFileSync(DATA_PATH, 'utf-8'));
   }
 
+  const cookie = await getSessionCookie();
+  console.log(`세션 쿠키 확보: ${cookie ? '성공' : '없음(쿠키 미발급 사이트일 수 있음)'}`);
+
   const lastKnown = history.length ? history[history.length - 1].drwNo : 0;
   let nextNo = lastKnown + 1;
   let added = 0;
@@ -54,7 +72,7 @@ async function main() {
   while (added < 10) {
     let draw;
     try {
-      draw = await fetchDraw(nextNo);
+      draw = await fetchDraw(nextNo, cookie);
     } catch (e) {
       console.error(`회차 ${nextNo} 조회 중 오류 발생, 이번 실행은 여기서 중단합니다.`);
       console.error(e.message);
