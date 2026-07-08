@@ -11,9 +11,26 @@ const DATA_PATH = path.join(__dirname, '..', 'data', 'lotto-history.json');
 async function fetchDraw(drwNo) {
   const url = `https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo=${drwNo}`;
   const res = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0' }
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': 'application/json, text/plain, */*',
+      'Referer': 'https://www.dhlottery.co.kr/gameResult.do?method=byWin',
+      'Accept-Language': 'ko-KR,ko;q=0.9',
+    }
   });
-  const data = await res.json();
+
+  const text = await res.text();
+
+  // JSON이 아닌 응답(HTML 차단 페이지 등)이 오면, 원인 파악을 위해 앞부분을 그대로 로그로 남김
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    console.error(`[drwNo=${drwNo}] HTTP status: ${res.status}`);
+    console.error(`[drwNo=${drwNo}] 응답 본문 앞부분: ${text.slice(0, 300)}`);
+    throw new Error(`JSON 파싱 실패 (drwNo=${drwNo}) - 서버가 차단했을 가능성이 높습니다`);
+  }
+
   if (data.returnValue !== 'success') return null;
   return {
     drwNo: data.drwNo,
@@ -35,7 +52,14 @@ async function main() {
 
   // 최신 회차까지 순차적으로 조회 (한 번 실행에 최대 10회차까지만, 과도한 요청 방지)
   while (added < 10) {
-    const draw = await fetchDraw(nextNo);
+    let draw;
+    try {
+      draw = await fetchDraw(nextNo);
+    } catch (e) {
+      console.error(`회차 ${nextNo} 조회 중 오류 발생, 이번 실행은 여기서 중단합니다.`);
+      console.error(e.message);
+      break;
+    }
     if (!draw) break;
     history.push(draw);
     nextNo++;
