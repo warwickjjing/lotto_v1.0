@@ -113,6 +113,15 @@
     margin-top:10px;
   }
 
+  .stat-section{margin-bottom:20px;}
+  .stat-section:last-child{margin-bottom:0;}
+  .stat-title{font-size:14px;font-weight:700;color:var(--ink-soft);margin-bottom:10px;}
+  .stat-balls{display:flex;flex-wrap:wrap;gap:10px;}
+  .stat-item{display:flex;flex-direction:column;align-items:center;gap:4px;}
+  .stat-item .ball{width:32px;height:32px;font-size:13px;}
+  .stat-item .sub{font-size:11px;color:var(--ink-soft);}
+  .stat-meta{font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;}
+
   footer{
     text-align:center;padding:30px 0 40px;
     font-size:13px;color:var(--ink-soft);
@@ -149,6 +158,14 @@
         <div class="t">연속번호 최소화</div>
         <div class="d">붙어있는 숫자 최대한 배제</div>
       </button>
+      <button class="mode-btn" data-mode="hot">
+        <div class="t">자주 나온 번호 위주</div>
+        <div class="d">전체 회차 중 출현 빈도 상위권</div>
+      </button>
+      <button class="mode-btn" data-mode="cold">
+        <div class="t">오래 안 나온 번호 위주</div>
+        <div class="d">최근 미출현 기간이 긴 번호</div>
+      </button>
     </div>
 
     <h2>2. 게임 수</h2>
@@ -164,13 +181,17 @@
   </div>
 
   <div class="card">
-    <h2>최근 확인된 당첨번호</h2>
+    <h2>최근 당첨번호</h2>
     <div class="draw-card">
       <div class="balls" id="lastDrawBalls"></div>
-      <div class="draw-meta"><b>1204회</b> 기준 (예시 데이터)</div>
+      <div class="draw-meta" id="lastDrawMeta">불러오는 중...</div>
     </div>
-    <div class="note">
-      전체 회차 통계 분석 기능은 별도로 제공되는 자동 수집 스크립트를 연결하면 활성화됩니다. 현재는 최근 확인된 1개 회차만 예시로 표시하고 있어요.
+  </div>
+
+  <div class="card">
+    <h2>번호별 출현 통계</h2>
+    <div id="statsBody">
+      <div class="note">데이터를 불러오는 중이에요...</div>
     </div>
   </div>
 
@@ -181,6 +202,12 @@
 </footer>
 
 <script>
+  const DATA_URL = 'https://raw.githubusercontent.com/warwickjjing/lotto_v1.0/main/data/lotto-history.json';
+
+  let hotNumbers = [];   // 출현 빈도 상위 번호 (많이 나온 순)
+  let coldNumbers = [];  // 최근 미출현 기간이 긴 번호 (오래 안 나온 순)
+  let dataReady = false;
+
   const BALL_COLORS = n => {
     if(n<=10) return 'var(--ball1)';
     if(n<=20) return 'var(--ball2)';
@@ -188,6 +215,107 @@
     if(n<=40) return 'var(--ball4)';
     return 'var(--ball5)';
   };
+
+  function makeBall(n, size){
+    const b = document.createElement('div');
+    b.className = 'ball';
+    b.textContent = n;
+    b.style.background = BALL_COLORS(n);
+    if(size) b.style.cssText += `width:${size}px;height:${size}px;font-size:${Math.round(size*0.4)}px;`;
+    return b;
+  }
+
+  async function loadStats(){
+    try{
+      const res = await fetch(DATA_URL);
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      const history = await res.json();
+      if(!Array.isArray(history) || history.length === 0) throw new Error('데이터 비어있음');
+
+      renderLastDraw(history[history.length - 1]);
+      computeStats(history);
+      dataReady = true;
+    }catch(e){
+      document.getElementById('lastDrawMeta').textContent = '데이터를 불러오지 못했어요';
+      document.getElementById('statsBody').innerHTML =
+        '<div class="note">통계 데이터를 불러오지 못했어요. 잠시 후 새로고침 해보세요. (' + e.message + ')</div>';
+    }
+  }
+
+  function computeStats(history){
+    const freq = Array(46).fill(0);
+    const lastSeenRound = Array(46).fill(0);
+
+    history.forEach(entry=>{
+      entry.numbers.forEach(n=>{
+        freq[n]++;
+        lastSeenRound[n] = entry.drwNo;
+      });
+    });
+
+    const latestRound = history[history.length - 1].drwNo;
+
+    const hotList = Array.from({length:45}, (_,i)=>i+1)
+      .sort((a,b)=> freq[b]-freq[a])
+      .slice(0,10);
+
+    const coldList = Array.from({length:45}, (_,i)=>i+1)
+      .sort((a,b)=> lastSeenRound[a]-lastSeenRound[b])
+      .slice(0,10);
+
+    hotNumbers = Array.from({length:45}, (_,i)=>i+1).sort((a,b)=> freq[b]-freq[a]).slice(0,20);
+    coldNumbers = Array.from({length:45}, (_,i)=>i+1).sort((a,b)=> lastSeenRound[a]-lastSeenRound[b]).slice(0,20);
+
+    const statsBody = document.getElementById('statsBody');
+    statsBody.innerHTML = '';
+
+    const meta = document.createElement('div');
+    meta.className = 'stat-meta';
+    meta.textContent = `총 ${history.length}개 회차(1~${latestRound}회) 기준`;
+    statsBody.appendChild(meta);
+
+    const hotSection = document.createElement('div');
+    hotSection.className = 'stat-section';
+    const hotTitle = document.createElement('div');
+    hotTitle.className = 'stat-title';
+    hotTitle.textContent = '자주 나온 번호 TOP 10';
+    hotSection.appendChild(hotTitle);
+    const hotBalls = document.createElement('div');
+    hotBalls.className = 'stat-balls';
+    hotList.forEach(n=>{
+      const item = document.createElement('div');
+      item.className = 'stat-item';
+      item.appendChild(makeBall(n));
+      const sub = document.createElement('div');
+      sub.className = 'sub';
+      sub.textContent = freq[n] + '회';
+      item.appendChild(sub);
+      hotBalls.appendChild(item);
+    });
+    hotSection.appendChild(hotBalls);
+    statsBody.appendChild(hotSection);
+
+    const coldSection = document.createElement('div');
+    coldSection.className = 'stat-section';
+    const coldTitle = document.createElement('div');
+    coldTitle.className = 'stat-title';
+    coldTitle.textContent = '오래 안 나온 번호 TOP 10';
+    coldSection.appendChild(coldTitle);
+    const coldBalls = document.createElement('div');
+    coldBalls.className = 'stat-balls';
+    coldList.forEach(n=>{
+      const item = document.createElement('div');
+      item.className = 'stat-item';
+      item.appendChild(makeBall(n));
+      const sub = document.createElement('div');
+      sub.className = 'sub';
+      sub.textContent = (latestRound - lastSeenRound[n]) + '회째';
+      item.appendChild(sub);
+      coldBalls.appendChild(item);
+    });
+    coldSection.appendChild(coldBalls);
+    statsBody.appendChild(coldSection);
+  }
 
   document.querySelectorAll('.mode-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
@@ -245,10 +373,19 @@
     return genRandom();
   }
 
+  function genFromPool(pool){
+    if(!dataReady || pool.length < 6) return genRandom();
+    const shuffled = shuffle([...pool]);
+    return shuffled.slice(0,6).sort((a,b)=>a-b);
+  }
+
+  function genHot(){ return genFromPool(hotNumbers); }
+  function genCold(){ return genFromPool(coldNumbers); }
+
   function generate(){
     const mode = document.querySelector('.mode-btn.active').dataset.mode;
     const count = parseInt(countRange.value, 10);
-    const genFn = { random: genRandom, balance: genBalance, spread: genSpread, nostreak: genNoStreak }[mode];
+    const genFn = { random: genRandom, balance: genBalance, spread: genSpread, nostreak: genNoStreak, hot: genHot, cold: genCold }[mode];
 
     const resultsEl = document.getElementById('results');
     resultsEl.innerHTML = '';
@@ -278,29 +415,21 @@
     }
   }
 
-  function renderLastDraw(){
-    const nums = [8,16,28,30,31,44];
-    const bonus = 27;
+  function renderLastDraw(entry){
     const el = document.getElementById('lastDrawBalls');
-    nums.forEach(n=>{
-      const b = document.createElement('div');
-      b.className = 'ball';
-      b.textContent = n;
-      b.style.background = BALL_COLORS(n);
-      el.appendChild(b);
-    });
+    el.innerHTML = '';
+    entry.numbers.forEach(n=> el.appendChild(makeBall(n)));
+
     const plus = document.createElement('div');
     plus.style.cssText = 'display:flex;align-items:center;color:var(--ink-soft);font-weight:700;';
     plus.textContent = '+';
     el.appendChild(plus);
-    const bb = document.createElement('div');
-    bb.className = 'ball';
-    bb.textContent = bonus;
-    bb.style.background = BALL_COLORS(bonus);
-    el.appendChild(bb);
+    el.appendChild(makeBall(entry.bonus));
+
+    document.getElementById('lastDrawMeta').innerHTML = `<b>${entry.drwNo}회</b> (${entry.date})`;
   }
 
-  renderLastDraw();
+  loadStats();
   generate();
 </script>
 
