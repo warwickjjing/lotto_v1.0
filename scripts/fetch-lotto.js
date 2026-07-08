@@ -1,57 +1,30 @@
 // scripts/fetch-lotto.js
-// 매주 자동 실행되어, 최신 회차의 당첨번호를 data/lotto-history.json 에 누적 저장합니다.
-// 실행 주체는 사용자 자신의 GitHub Actions 워크플로우이며, 동행복권 서버에 대한
-// 접근 정책(robots.txt 등)은 실행 전 반드시 다시 한번 직접 확인하시기 바랍니다.
+// 동행복권을 직접 호출하지 않고, GitHub에 공개된 로또 데이터셋(smok95/lotto)을 사용합니다.
+// 이 저장소는 GitHub Pages(github.io)로 호스팅되어 있어 GitHub Actions에서
+// IP 차단 없이 안정적으로 접근 가능합니다.
+// 출처: https://github.com/smok95/lotto (본 정보에는 오류가 있을 수 있음)
 
 const fs = require('fs');
 const path = require('path');
 
 const DATA_PATH = path.join(__dirname, '..', 'data', 'lotto-history.json');
-const COMMON_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  'Accept-Language': 'ko-KR,ko;q=0.9',
-};
+const LATEST_URL = 'https://smok95.github.io/lotto/results/latest.json';
+const ALL_URL = 'https://smok95.github.io/lotto/results/all.json';
 
-// 메인 페이지를 먼저 방문해서 세션 쿠키를 받아옴 (쿠키 없이 API를 바로 호출하면
-// 로그인 페이지로 리다이렉트되는 문제가 있어, 실제 브라우저 흐름을 흉내냄)
-async function getSessionCookie() {
-  const res = await fetch('https://www.dhlottery.co.kr/common.do?method=main', {
-    headers: COMMON_HEADERS,
-  });
-  const setCookie = res.headers.get('set-cookie') || '';
-  // 여러 개의 Set-Cookie가 콤마로 합쳐져 오는 경우도 있어 세미콜론 기준 앞부분만 추출
-  const cookiePairs = setCookie.split(/,(?=[^;]+?=)/).map(c => c.split(';')[0].trim());
-  return cookiePairs.filter(Boolean).join('; ');
+async function fetchJson(url) {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`요청 실패 (${url}) - HTTP ${res.status}`);
+  }
+  return res.json();
 }
 
-async function fetchDraw(drwNo, cookie) {
-  const url = `https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo=${drwNo}`;
-  const res = await fetch(url, {
-    headers: {
-      ...COMMON_HEADERS,
-      'Accept': 'application/json, text/plain, */*',
-      'Referer': 'https://www.dhlottery.co.kr/gameResult.do?method=byWin',
-      'Cookie': cookie,
-    }
-  });
-
-  const text = await res.text();
-
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch (e) {
-    console.error(`[drwNo=${drwNo}] HTTP status: ${res.status}`);
-    console.error(`[drwNo=${drwNo}] 응답 본문 앞부분: ${text.slice(0, 300)}`);
-    throw new Error(`JSON 파싱 실패 (drwNo=${drwNo}) - 서버가 차단했을 가능성이 높습니다`);
-  }
-
-  if (data.returnValue !== 'success') return null;
+function normalize(entry) {
   return {
-    drwNo: data.drwNo,
-    date: data.drwNoDate,
-    numbers: [data.drwtNo1, data.drwtNo2, data.drwtNo3, data.drwtNo4, data.drwtNo5, data.drwtNo6],
-    bonus: data.bnusNo,
+    drwNo: entry.draw_no,
+    date: entry.date,
+    numbers: entry.numbers,
+    bonus: entry.bonus_no,
   };
 }
 
@@ -61,37 +34,29 @@ async function main() {
     history = JSON.parse(fs.readFileSync(DATA_PATH, 'utf-8'));
   }
 
-  const cookie = await getSessionCookie();
-  console.log(`세션 쿠키 확보: ${cookie ? '성공' : '없음(쿠키 미발급 사이트일 수 있음)'}`);
-
   const lastKnown = history.length ? history[history.length - 1].drwNo : 0;
-  let nextNo = lastKnown + 1;
-  let added = 0;
 
-  // 최신 회차까지 순차적으로 조회 (한 번 실행에 최대 10회차까지만, 과도한 요청 방지)
-  while (added < 10) {
-    let draw;
-    try {
-      draw = await fetchDraw(nextNo, cookie);
-    } catch (e) {
-      console.error(`회차 ${nextNo} 조회 중 오류 발생, 이번 실행은 여기서 중단합니다.`);
-      console.error(e.message);
-      break;
-    }
-    if (!draw) break;
-    history.push(draw);
-    nextNo++;
-    added++;
-    await new Promise(r => setTimeout(r, 300)); // 과도한 연속 요청 방지
-  }
+  const latest = await fetchJson(LATEST_URL);
+  console.log(`원본 데이터 최신 회차: ${latest.draw_no}, 로컬 최신 회차: ${lastKnown}`);
 
-  if (added > 0) {
-    fs.mkdirSync(path.dirname(DATA_PATH), { recursive: true });
-    fs.writeFileSync(DATA_PATH, JSON.stringify(history, null, 2));
-    console.log(`${added}개 회차 추가됨 (최신: ${nextNo - 1}회)`);
-  } else {
+  if (latest.draw_no <= lastKnown) {
     console.log('추가할 새 회차 없음');
+    return;
   }
+
+  // 로컬에 데이터가 아예 없는 첫 실행이면 전체 데이터를 한 번에 받아옴
+  if (history.length === 0) {
+    console.log('첫 실행 감지: 전체 회차 데이터를 한 번에 받아옵니다.');
+    const all = await fetchJson(ALL_URL);
+    history = all.map(normalize).sort((a, b) => a.drwNo - b.drwNo);
+  } else {
+    // 이후에는 최신 회차만 추가 (일반적으로 매주 1개씩만 늘어남)
+    history.push(normalize(latest));
+  }
+
+  fs.mkdirSync(path.dirname(DATA_PATH), { recursive: true });
+  fs.writeFileSync(DATA_PATH, JSON.stringify(history, null, 2));
+  console.log(`저장 완료. 총 ${history.length}개 회차, 최신 ${history[history.length - 1].drwNo}회`);
 }
 
 main().catch(err => {
