@@ -140,16 +140,10 @@
     flex-wrap:wrap;gap:12px;
   }
   .draw-meta{display:flex;align-items:center;gap:8px;}
-  .draw-round{
-    background:var(--blue);color:#fff;
-    font-weight:900;font-size:13.5px;
-    padding:7px 14px;border-radius:999px;
-    white-space:nowrap;
-  }
-  .draw-date{
+  .draw-chip{
     display:flex;align-items:center;gap:5px;
     background:var(--blue-soft);color:var(--blue-deep);
-    font-weight:700;font-size:12.5px;
+    font-weight:700;font-size:13px;
     padding:7px 14px;border-radius:999px;
     white-space:nowrap;
   }
@@ -534,10 +528,8 @@
     el.appendChild(plus);
     el.appendChild(makeBall(entry.bonus));
 
-    document.getElementById('lastDrawMeta').innerHTML = `
-      <span class="draw-round">${entry.drwNo}회</span>
-      <span class="draw-date">📅 ${formatKoreanDate(entry.date)}</span>
-    `;
+    document.getElementById('lastDrawMeta').innerHTML =
+      `<span class="draw-chip">${entry.drwNo}회 · 📅 ${formatKoreanDate(entry.date)}</span>`;
   }
 
   renderDDay();
