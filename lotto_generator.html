@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>로또 번호 생성기 — 다양한 방식으로 뽑아보세요</title>
+<meta name="description" content="완전 무작위, 홀짝 균형, 구간 고르게 등 다양한 방식으로 로또 번호를 뽑아보세요. 최근 당첨번호와 번호별 출현 통계도 함께 확인할 수 있어요.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="로또 번호 생성기 — 다양한 방식으로 뽑아보세요">
+<meta property="og:description" content="완전 무작위, 홀짝 균형, 구간 고르게 등 다양한 방식으로 로또 번호를 뽑아보세요. 최근 당첨번호와 번호별 출현 통계도 함께 확인할 수 있어요.">
+<meta property="og:url" content="https://warwickjjing.github.io/lotto_v1.0/lotto_generator.html">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="로또 번호 생성기 — 다양한 방식으로 뽑아보세요">
+<meta name="twitter:description" content="완전 무작위, 홀짝 균형, 구간 고르게 등 다양한 방식으로 로또 번호를 뽑아보세요.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
 <style>
@@ -35,6 +43,15 @@
   header{padding:36px 0 20px;text-align:center;}
   header h1{font-size:26px;font-weight:900;margin:0 0 8px;}
   header p{font-size:15px;color:var(--ink-soft);margin:0;}
+
+  .dday-wrap{text-align:center;margin:0 0 22px;}
+  .dday-badge{
+    display:inline-flex;align-items:center;gap:6px;
+    background:var(--blue-deep);color:#fff;
+    font-weight:900;font-size:14px;
+    padding:10px 20px;border-radius:999px;
+  }
+  .dday-badge.urgent{background:var(--gold);color:#20232B;}
 
   .card{
     background:#fff;
@@ -91,6 +108,16 @@
   .result-row:last-child{border-bottom:none;}
   .result-idx{font-size:13px;color:var(--ink-soft);width:20px;flex-shrink:0;}
   .balls{display:flex;gap:6px;flex-wrap:wrap;}
+  .copy-btn{
+    margin-left:auto;flex-shrink:0;
+    padding:7px 14px;
+    border:1.5px solid var(--line);border-radius:8px;
+    background:#fff;color:var(--ink-soft);
+    font-size:12.5px;font-weight:700;font-family:inherit;
+    cursor:pointer;transition:.15s;
+  }
+  .copy-btn:hover{border-color:var(--blue);color:var(--blue);}
+  .copy-btn.copied{background:var(--blue);border-color:var(--blue);color:#fff;}
   .ball{
     width:36px;height:36px;border-radius:50%;
     display:flex;align-items:center;justify-content:center;
@@ -102,8 +129,20 @@
     display:flex;justify-content:space-between;align-items:center;
     flex-wrap:wrap;gap:12px;
   }
-  .draw-meta{font-size:13.5px;color:var(--ink-soft);}
-  .draw-meta b{color:var(--ink);}
+  .draw-meta{display:flex;align-items:center;gap:8px;}
+  .draw-round{
+    background:var(--blue);color:#fff;
+    font-weight:900;font-size:13.5px;
+    padding:7px 14px;border-radius:999px;
+    white-space:nowrap;
+  }
+  .draw-date{
+    display:flex;align-items:center;gap:5px;
+    background:var(--blue-soft);color:var(--blue-deep);
+    font-weight:700;font-size:12.5px;
+    padding:7px 14px;border-radius:999px;
+    white-space:nowrap;
+  }
 
   .note{
     font-size:13px;color:var(--ink-soft);
@@ -136,6 +175,10 @@
     <p>방식을 고르고, 원하는 만큼 뽑아보세요</p>
   </div>
 </header>
+
+<div class="dday-wrap">
+  <span class="dday-badge" id="ddayBadge">불러오는 중...</span>
+</div>
 
 <div class="wrap">
 
@@ -411,8 +454,47 @@
       });
       row.appendChild(balls);
 
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'copy-btn';
+      copyBtn.textContent = '복사';
+      copyBtn.addEventListener('click', ()=>{
+        navigator.clipboard.writeText(nums.join(', '));
+        copyBtn.textContent = '복사됨!';
+        copyBtn.classList.add('copied');
+        setTimeout(()=>{
+          copyBtn.textContent = '복사';
+          copyBtn.classList.remove('copied');
+        }, 1500);
+      });
+      row.appendChild(copyBtn);
+
       resultsEl.appendChild(row);
     }
+  }
+
+  function renderDDay(){
+    const el = document.getElementById('ddayBadge');
+    const now = new Date();
+    const day = now.getDay();
+    const drawTime = new Date(now);
+    drawTime.setHours(20, 35, 0, 0);
+
+    if(day === 6 && now < drawTime){
+      const hours = Math.max(1, Math.ceil((drawTime - now) / 3600000));
+      el.textContent = `🔥 오늘 밤 ${hours}시간 뒤 추첨!`;
+      el.classList.add('urgent');
+      return;
+    }
+
+    let daysUntil = (6 - day + 7) % 7;
+    if(daysUntil === 0) daysUntil = 7;
+    el.textContent = `다음 추첨까지 D-${daysUntil}`;
+    el.classList.remove('urgent');
+  }
+
+  function formatKoreanDate(isoDate){
+    const [y, m, d] = isoDate.split('T')[0].split('-');
+    return `${y}년 ${parseInt(m,10)}월 ${parseInt(d,10)}일`;
   }
 
   function renderLastDraw(entry){
@@ -426,9 +508,14 @@
     el.appendChild(plus);
     el.appendChild(makeBall(entry.bonus));
 
-    document.getElementById('lastDrawMeta').innerHTML = `<b>${entry.drwNo}회</b> (${entry.date})`;
+    document.getElementById('lastDrawMeta').innerHTML = `
+      <span class="draw-round">${entry.drwNo}회</span>
+      <span class="draw-date">📅 ${formatKoreanDate(entry.date)}</span>
+    `;
   }
 
+  renderDDay();
+  setInterval(renderDDay, 60000);
   loadStats();
   generate();
 </script>
