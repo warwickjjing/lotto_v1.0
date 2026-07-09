@@ -139,7 +139,8 @@
     color:#fff;font-weight:900;font-size:14.5px;
     flex-shrink:0;
   }
-  .ball.matched{box-shadow:0 0 0 3px var(--gold);}
+  .ball.matched{box-shadow:0 0 0 2px #fff, 0 0 0 5px var(--gold);}
+  .ball.bonus-matched{box-shadow:0 0 0 2px #fff, 0 0 0 5px var(--blue);}
 
   .my-num-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;}
   .my-num-header h2{margin:0;}
@@ -151,9 +152,27 @@
   }
   .mini-action-btn:hover{background:var(--blue-soft);}
 
-  .my-num-row{padding:14px 0;border-bottom:1px solid var(--line);}
+  .my-num-row{position:relative;padding:14px 0;border-bottom:1px solid var(--line);}
   .my-num-row:last-child{border-bottom:none;}
   .my-num-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+
+  .my-num-tooltip{
+    position:absolute;left:0;right:0;top:100%;margin-top:10px;
+    background:var(--ink);color:#fff;border-radius:12px;
+    padding:12px 14px;box-shadow:0 10px 24px rgba(0,0,0,.18);
+    opacity:0;visibility:hidden;pointer-events:none;
+    transform:translateY(-4px);
+    transition:opacity .15s, transform .15s;
+    z-index:20;
+  }
+  .my-num-row:hover .my-num-tooltip{opacity:1;visibility:visible;transform:translateY(0);}
+  .my-num-tooltip::before{
+    content:'';position:absolute;top:-6px;left:24px;
+    border-left:6px solid transparent;border-right:6px solid transparent;
+    border-bottom:6px solid var(--ink);
+  }
+  .my-num-tooltip .tooltip-title{font-size:11.5px;font-weight:700;color:#fff;opacity:.7;margin-bottom:8px;}
+  .my-num-tooltip .balls{gap:6px;align-items:center;}
   .my-num-del{
     margin-left:auto;flex-shrink:0;
     background:none;border:none;color:var(--ink-soft);
@@ -461,8 +480,12 @@
       ballsWrap.className = 'balls';
       item.numbers.forEach(n=>{
         const b = makeBall(n);
-        if(!isPending && targetEntry.numbers.includes(n)){
-          b.classList.add('matched');
+        if(!isPending){
+          if(targetEntry.numbers.includes(n)){
+            b.classList.add('matched');
+          }else if(n === targetEntry.bonus){
+            b.classList.add('bonus-matched');
+          }
         }
         ballsWrap.appendChild(b);
       });
@@ -498,6 +521,28 @@
         if(rank) status.classList.add('win');
       }
       row.appendChild(status);
+
+      if(!isPending){
+        const tooltip = document.createElement('div');
+        tooltip.className = 'my-num-tooltip';
+
+        const tooltipTitle = document.createElement('div');
+        tooltipTitle.className = 'tooltip-title';
+        tooltipTitle.textContent = `${item.targetRound}회 당첨번호`;
+        tooltip.appendChild(tooltipTitle);
+
+        const tooltipBalls = document.createElement('div');
+        tooltipBalls.className = 'balls';
+        targetEntry.numbers.forEach(n=> tooltipBalls.appendChild(makeBall(n, 28)));
+        const plus = document.createElement('div');
+        plus.style.cssText = 'display:flex;align-items:center;color:#fff;font-weight:700;opacity:.7;';
+        plus.textContent = '+';
+        tooltipBalls.appendChild(plus);
+        tooltipBalls.appendChild(makeBall(targetEntry.bonus, 28));
+        tooltip.appendChild(tooltipBalls);
+
+        row.appendChild(tooltip);
+      }
 
       body.appendChild(row);
     });
