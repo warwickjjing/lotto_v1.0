@@ -395,7 +395,11 @@
   let dataReady = false;
   let lastResults = [];
   let latestRoundGlobal = null;
-  let latestEntryGlobal = null;
+  let historyGlobal = [];
+
+  function getRoundEntry(round){
+    return historyGlobal.find(e=> e.drwNo === round) || null;
+  }
 
   const SAVE_KEY = 'lotto_saved_numbers';
   function loadSavedNumbers(){
@@ -408,8 +412,11 @@
   let myNumbersPage = 0;
   const MY_NUMBERS_PAGE_SIZE = 5;
 
-  function saveNumbers(nums){
-    savedNumbers.unshift({ numbers: nums, savedRound: dataReady ? latestRoundGlobal : null });
+  // targetRound: 이 조합이 겨냥하는 특정 회차. 항상 "그 회차"의 고정된 결과와만 비교하므로
+  // 이후 회차가 아무리 늘어나도 한 번 나온 당첨 결과가 바뀌어 보이지 않는다.
+  function saveNumbers(nums, targetRound){
+    const resolved = targetRound !== undefined ? targetRound : (dataReady ? latestRoundGlobal + 1 : null);
+    savedNumbers.unshift({ numbers: nums, targetRound: resolved });
     persistSavedNumbers();
     myNumbersPage = 0;
     renderMyNumbers();
@@ -444,7 +451,8 @@
       const row = document.createElement('div');
       row.className = 'my-num-row';
 
-      const isPending = !dataReady || (item.savedRound !== null && latestRoundGlobal <= item.savedRound);
+      const targetEntry = (dataReady && item.targetRound !== null) ? getRoundEntry(item.targetRound) : null;
+      const isPending = !targetEntry;
 
       const top = document.createElement('div');
       top.className = 'my-num-top';
@@ -453,7 +461,7 @@
       ballsWrap.className = 'balls';
       item.numbers.forEach(n=>{
         const b = makeBall(n);
-        if(!isPending && latestEntryGlobal.numbers.includes(n)){
+        if(!isPending && targetEntry.numbers.includes(n)){
           b.classList.add('matched');
         }
         ballsWrap.appendChild(b);
@@ -477,14 +485,16 @@
       if(!dataReady){
         status.textContent = '최신 회차 확인 중...';
       }else if(isPending){
-        status.textContent = '⏳ 다음 추첨 결과를 기다리는 중이에요';
+        status.textContent = item.targetRound !== null
+          ? `⏳ ${item.targetRound}회 추첨 결과를 기다리는 중이에요`
+          : '⏳ 다음 추첨 결과를 기다리는 중이에요';
       }else{
-        const matchCount = item.numbers.filter(n=> latestEntryGlobal.numbers.includes(n)).length;
-        const bonusMatch = item.numbers.includes(latestEntryGlobal.bonus);
+        const matchCount = item.numbers.filter(n=> targetEntry.numbers.includes(n)).length;
+        const bonusMatch = item.numbers.includes(targetEntry.bonus);
         const rank = calcRank(matchCount, bonusMatch);
         status.textContent = rank
-          ? `🎉 ${matchCount}개 일치! ${rank} 당첨권이에요 (${latestRoundGlobal}회 기준)`
-          : `${matchCount}개 일치 · 아쉽게 낙첨 (${latestRoundGlobal}회 기준)`;
+          ? `🎉 ${matchCount}개 일치! ${rank} 당첨권이에요 (${item.targetRound}회 기준)`
+          : `${matchCount}개 일치 · 아쉽게 낙첨 (${item.targetRound}회 기준)`;
         if(rank) status.classList.add('win');
       }
       row.appendChild(status);
@@ -563,12 +573,13 @@
     document.getElementById('manualPickerPanel').style.display = 'none';
   }
 
-  // 동행복권 실물용지 QR의 정확한 포맷이 공식 문서화되어 있지 않아,
-  // v= 파라미터 안에서 숫자만 뽑아 12자리(6개×2자리) 단위로 유효한 게임만 인식하는 방식으로 파싱한다.
+  // 동행복권 QR (m.dhlottery.co.kr/qr.do?...&v=RRRRqNNNNNNNNNNNNq...) 포맷:
+  // v= 뒤 첫 4자리가 회차, 이후 q로 구분된 12자리(6개×2자리) 블록마다 한 게임.
   function parseLottoQR(text){
     const match = text.match(/[?&]v=([^&]+)/);
     const raw = match ? decodeURIComponent(match[1]) : text;
     const chunks = raw.split(/[^0-9]+/).filter(Boolean);
+    const round = chunks.length > 0 ? parseInt(chunks[0], 10) : null;
     const games = [];
     chunks.forEach(chunk=>{
       if(chunk.length !== 12) return;
@@ -580,7 +591,7 @@
       const valid = nums.every(n=> n>=1 && n<=45) && unique.size === 6;
       if(valid) games.push(nums.sort((a,b)=>a-b));
     });
-    return games;
+    return { round: Number.isFinite(round) ? round : null, games };
   }
 
   let qrStream = null;
@@ -650,7 +661,7 @@
 
   function handleQrDecoded(text){
     stopQrStream();
-    const games = parseLottoQR(text);
+    const { round, games } = parseLottoQR(text);
     const resultEl = document.getElementById('qrResult');
     document.getElementById('qrVideo').style.display = 'none';
     resultEl.innerHTML = '';
@@ -665,9 +676,13 @@
       return;
     }
 
+    const resolvedRound = round !== null ? round : (dataReady ? latestRoundGlobal + 1 : null);
+
     const title = document.createElement('div');
     title.className = 'qr-found-title';
-    title.textContent = `${games.length}개 조합을 찾았어요. 추가할 항목을 선택하세요.`;
+    title.textContent = round !== null
+      ? `${round}회 응모권에서 ${games.length}개 조합을 찾았어요. 추가할 항목을 선택하세요.`
+      : `회차를 인식하지 못해 ${resolvedRound ?? '다음'}회 기준으로 등록돼요. ${games.length}개 조합을 찾았어요.`;
     resultEl.appendChild(title);
 
     games.forEach((nums, i)=>{
@@ -690,7 +705,7 @@
     addBtn.textContent = '선택한 조합 추가';
     addBtn.addEventListener('click', ()=>{
       resultEl.querySelectorAll('input[type=checkbox]:checked').forEach(cb=>{
-        saveNumbers(games[parseInt(cb.dataset.idx, 10)]);
+        saveNumbers(games[parseInt(cb.dataset.idx, 10)], resolvedRound);
       });
       closeQrScanner();
     });
@@ -721,9 +736,9 @@
       const history = await res.json();
       if(!Array.isArray(history) || history.length === 0) throw new Error('데이터 비어있음');
 
+      historyGlobal = history;
       const latestEntry = history[history.length - 1];
       latestRoundGlobal = latestEntry.drwNo;
-      latestEntryGlobal = latestEntry;
 
       renderLastDraw(latestEntry);
       computeStats(history);
