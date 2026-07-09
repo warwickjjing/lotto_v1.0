@@ -483,8 +483,8 @@
         const bonusMatch = item.numbers.includes(latestEntryGlobal.bonus);
         const rank = calcRank(matchCount, bonusMatch);
         status.textContent = rank
-          ? `🎉 ${matchCount}개 일치! ${rank} 당첨권이에요`
-          : `${matchCount}개 일치 · 아쉽게 낙첨`;
+          ? `🎉 ${matchCount}개 일치! ${rank} 당첨권이에요 (${latestRoundGlobal}회 기준)`
+          : `${matchCount}개 일치 · 아쉽게 낙첨 (${latestRoundGlobal}회 기준)`;
         if(rank) status.classList.add('win');
       }
       row.appendChild(status);
