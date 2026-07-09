@@ -173,6 +173,20 @@
     text-align:center;padding:30px 0 40px;
     font-size:13px;color:var(--ink-soft);
   }
+
+  .support-card{text-align:center;}
+  .support-emoji{font-size:32px;margin-bottom:8px;}
+  .support-desc{font-size:13.5px;color:var(--ink-soft);margin:0 0 18px;}
+  .support-btn{
+    display:inline-block;
+    padding:14px 28px;
+    background:var(--gold);color:#20232B;
+    border-radius:12px;
+    font-weight:900;font-size:15px;
+    text-decoration:none;
+    transition:.15s;
+  }
+  .support-btn:hover{opacity:.85;}
 </style>
 </head>
 <body>
@@ -245,6 +259,13 @@
     <div id="statsBody">
       <div class="note">데이터를 불러오는 중이에요...</div>
     </div>
+  </div>
+
+  <div class="card support-card">
+    <div class="support-emoji">☕</div>
+    <h2>이 도구가 도움이 되셨나요?</h2>
+    <p class="support-desc">커피 한 잔 값이 서버 운영과 데이터 업데이트에 큰 힘이 됩니다.</p>
+    <a class="support-btn" href="#" target="_blank" rel="noopener">☕ 커피 한잔 후원하기</a>
   </div>
 
 </div>
